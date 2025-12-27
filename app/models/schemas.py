@@ -12,6 +12,8 @@ class CourseEnrollment(BaseModel):
     user_count: int
     user_role: str
     course_slug: str
+    active: Optional[bool] = None
+    staff: Optional[List[str]] = None
 
 
 class UserStatsResponse(BaseModel):

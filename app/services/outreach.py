@@ -67,7 +67,8 @@ class OutreachDashboardClient:
         Returns:
             Course details JSON or None on error
         """
-        url = f"{self.base_url}/courses/{school}/{title_slug}"
+        url = f"{self.base_url}/courses/{school}/{title_slug}/course.json"
+        print(url)
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:

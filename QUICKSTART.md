@@ -89,6 +89,35 @@ Response:
 }
 ```
 
+### Get user courses with enrichment
+```bash
+# Add active status and staff list to each course
+curl "http://localhost:8000/api/users/PegCult?enrich=true"
+```
+
+Response includes additional fields:
+```json
+{
+  "username": "PegCult",
+  "courses": [
+    {
+      "course_id": 12345,
+      "course_title": "Example Course",
+      "course_school": "Example School",
+      "course_term": "Fall 2025",
+      "user_count": 42,
+      "user_role": "instructor",
+      "course_slug": "Example_School/Example_Course",
+      "active": true,
+      "staff": ["Facilitator1", "Facilitator2"]
+    }
+  ],
+  "is_instructor": true,
+  "is_student": false,
+  "max_project": "wikidata"
+}
+```
+
 ### Get course users
 ```bash
 curl "http://localhost:8000/api/courses/Igbo_Wikimedian_User_Group,_WAFTAI/Wikidata_Days_IWUG_and_WAFTAI_2025_(November)/users"
