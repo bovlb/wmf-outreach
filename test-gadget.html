@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Outreach Staff Gadget Test Page</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: #f8f9fa;
+            border: 1px solid #a2a9b1;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        #p-views {
+            background: #f8f9fa;
+            border-bottom: 2px solid #a2a9b1;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        #p-views a {
+            margin-right: 15px;
+            padding: 5px 10px;
+            text-decoration: none;
+            color: #0645ad;
+            background: white;
+            border: 1px solid #a2a9b1;
+            border-radius: 3px;
+        }
+        #p-views a:hover {
+            background: #eaecf0;
+        }
+        .content {
+            padding: 20px;
+        }
+        .instructions {
+            background: #eaf3ff;
+            border: 1px solid #36c;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 3px;
+        }
+        .test-controls {
+            background: #fef6e7;
+            border: 1px solid #fc3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 3px;
+        }
+        .test-controls input {
+            padding: 5px;
+            margin-right: 10px;
+        }
+        .test-controls button {
+            padding: 5px 15px;
+            background: #36c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .test-controls button:hover {
+            background: #2952a3;
+        }
+        .console-output {
+            background: #f8f9fa;
+            border: 1px solid #a2a9b1;
+            padding: 10px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .console-output div {
+            margin-bottom: 5px;
+        }
+        .log-info { color: #36c; }
+        .log-error { color: #d73333; }
+        .log-success { color: #14866d; }
+    </style>
+    <script>
+        // Mock MediaWiki environment
+        window.mw = {
+            config: {
+                values: {
+                    'wgNamespaceNumber': 2,
+                    'wgTitle': 'TestUser',
+                    'wgRelevantUserName': 'TestUser',
+                    'wgPageName': 'User:TestUser',
+                    'wgCanonicalSpecialPageName': null
+                },
+                get: function(key) { return this.values[key]; }
+            },
+            util: {
+                addPortletLink: function(portlet, url, text, id, tooltip, accesskey, before) {
+                    consoleLog('Adding tab: ' + text + ' -> ' + url, 'success');
+                    const nav = document.getElementById('p-views') || document.body;
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.textContent = text;
+                    link.id = id;
+                    link.title = tooltip;
+                    link.target = '_blank';
+                    nav.appendChild(link);
+                }
+            },
+            loader: {
+                using: function(modules) {
+                    consoleLog('Loading modules: ' + modules.join(', '), 'info');
+                    return Promise.resolve();
+                }
+            }
+        };
+
+        // Console logging
+        function consoleLog(message, type = 'info') {
+            const output = document.getElementById('console-output');
+            if (output) {
+                const div = document.createElement('div');
+                div.className = 'log-' + type;
+                div.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+                output.appendChild(div);
+                output.scrollTop = output.scrollHeight;
+            }
+            console.log(message);
+        }
+
+        // Intercept console methods
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            consoleLog(args.join(' '), 'info');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            consoleLog(args.join(' '), 'error');
+        };
+
+        // Test controls
+        function changePageType(ns, title, special) {
+            mw.config.values.wgNamespaceNumber = ns;
+            mw.config.values.wgTitle = title;
+            mw.config.values.wgCanonicalSpecialPageName = special;
+            
+            if (ns === 2) {
+                mw.config.values.wgPageName = 'User:' + title;
+            } else if (ns === 3) {
+                mw.config.values.wgPageName = 'User_talk:' + title;
+            } else if (special) {
+                mw.config.values.wgPageName = 'Special:' + special;
+            }
+            
+            consoleLog('Changed page to: ' + mw.config.values.wgPageName, 'info');
+        }
+
+        function changeUsername() {
+            const username = document.getElementById('username-input').value;
+            mw.config.values.wgRelevantUserName = username;
+            mw.config.values.wgTitle = username;
+            consoleLog('Changed username to: ' + username, 'info');
+        }
+
+        function reloadGadget() {
+            consoleLog('Reloading page to test gadget...', 'info');
+            location.reload();
+        }
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h1>Outreach Staff Gadget Test Page</h1>
+        <p>Simulated MediaWiki environment for testing the Course Staff gadget</p>
+    </div>
+
+    <div class="instructions">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Make sure the service is running: <code>uvicorn app.main:app --reload</code></li>
+            <li>Enter a username that has active courses in the Outreach Dashboard</li>
+            <li>The "Course staff" tab should appear below automatically</li>
+            <li>Click the tab to view the course staff interface</li>
+            <li>Try different page types to verify the gadget appears correctly</li>
+        </ol>
+    </div>
+
+    <div class="test-controls">
+        <h2>Test Controls</h2>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="username-input"><strong>Username:</strong></label>
+            <input type="text" id="username-input" placeholder="TestUser" value="TestUser">
+            <button onclick="changeUsername(); reloadGadget();">Change Username & Reload</button>
+        </div>
+
+        <div>
+            <strong>Simulate Page Type:</strong><br>
+            <button onclick="changePageType(2, document.getElementById('username-input').value, null); reloadGadget();">
+                User Page
+            </button>
+            <button onclick="changePageType(3, document.getElementById('username-input').value, null); reloadGadget();">
+                User Talk
+            </button>
+            <button onclick="changePageType(-1, '', 'Contributions'); reloadGadget();">
+                Special:Contributions
+            </button>
+            <button onclick="changePageType(-1, '', 'DeletedContributions'); reloadGadget();">
+                Special:DeletedContributions
+            </button>
+            <button onclick="changePageType(0, 'Main_Page', null); reloadGadget();">
+                Article (should NOT show tab)
+            </button>
+        </div>
+    </div>
+
+    <!-- Simulated MediaWiki tabs -->
+    <div id="p-views">
+        <strong>Page tabs:</strong>
+        <a href="#" onclick="return false;">Read</a>
+        <a href="#" onclick="return false;">Edit</a>
+        <a href="#" onclick="return false;">History</a>
+        <!-- Course staff tab will be added here by gadget -->
+    </div>
+
+    <!-- Simulated page content -->
+    <div class="content">
+        <h1 id="page-title">User:TestUser</h1>
+        <p>This is a simulated user page for testing the Outreach Dashboard gadget.</p>
+        <p><strong>Current page type:</strong> <span id="current-page-type"></span></p>
+        <p><strong>Detected username:</strong> <span id="detected-username"></span></p>
+    </div>
+
+    <!-- Console output -->
+    <div>
+        <h2>Console Output</h2>
+        <div id="console-output" class="console-output">
+            <div class="log-info">Ready for testing...</div>
+        </div>
+    </div>
+
+    <script>
+        // Update page info
+        function updatePageInfo() {
+            const ns = mw.config.get('wgNamespaceNumber');
+            const special = mw.config.get('wgCanonicalSpecialPageName');
+            const pageName = mw.config.get('wgPageName');
+            
+            let pageType = '';
+            if (ns === 2) pageType = 'User page';
+            else if (ns === 3) pageType = 'User talk page';
+            else if (special === 'Contributions') pageType = 'Special:Contributions';
+            else if (special === 'DeletedContributions') pageType = 'Special:DeletedContributions';
+            else pageType = 'Other (' + pageName + ')';
+            
+            document.getElementById('page-title').textContent = pageName.replace(/_/g, ' ');
+            document.getElementById('current-page-type').textContent = pageType;
+            document.getElementById('detected-username').textContent = mw.config.get('wgRelevantUserName') || 'N/A';
+        }
+        
+        updatePageInfo();
+    </script>
+
+    <!-- Load the gadget -->
+    <script src="http://localhost:8000/gadget/outreach-staff-gadget.js"></script>
+</body>
+</html>

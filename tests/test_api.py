@@ -24,3 +24,5 @@ async def test_root_endpoint():
         data = response.json()
         assert "service" in data
         assert data["service"] == "Outreach Dashboard Helper"
+        assert "endpoints" in data
+        assert "user_active_staff" in data["endpoints"]

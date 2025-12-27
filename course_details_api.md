@@ -31,8 +31,8 @@ Top-level object:
 - `id` (number): Internal course ID.
 - `title` (string)
 - `description` (string)
-- `start` (string, ISO-8601 datetime, UTC)
-- `end` (string, ISO-8601 datetime, UTC)
+- `start` (string, ISO-8601 datetime, UTC): **Activity tracking start** - When the course starts tracking user contributions
+- `end` (string, ISO-8601 datetime, UTC): **Activity tracking end** - When the course stops tracking user contributions
 - `school` (string)
 - `subject` (string)
 - `slug` (string): Combined slug matching the request path.
@@ -49,7 +49,7 @@ Top-level object:
 
 Time/timeline related:
 
-- `timeline_start` / `timeline_end` (string, ISO-8601 datetime)
+- `timeline_start` / `timeline_end` (string, ISO-8601 datetime): **Event dates** - The actual start/end dates of the event itself (typically shorter window than activity tracking)
 - `use_start_and_end_times` (boolean)
 - `weekdays` (string): 7-character string of `0/1` flags (observed: `"0000000"`)
 - `day_exceptions` (string)

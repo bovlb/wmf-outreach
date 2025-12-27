@@ -118,6 +118,26 @@ Response includes additional fields:
 }
 ```
 
+### Get all staff from user's active courses
+```bash
+curl http://localhost:8000/api/users/PegCult/active-staff
+```
+
+Response:
+```json
+{
+  "username": "PegCult",
+  "all_staff": ["Alice", "Bob", "Charlie"],
+  "courses": [
+    {
+      "course_slug": "School/Course1",
+      "course_title": "Active Course 1",
+      "staff": ["Alice", "Bob"]
+    }
+  ]
+}
+```
+
 ### Get course users
 ```bash
 curl "http://localhost:8000/api/courses/Igbo_Wikimedian_User_Group,_WAFTAI/Wikidata_Days_IWUG_and_WAFTAI_2025_(November)/users"

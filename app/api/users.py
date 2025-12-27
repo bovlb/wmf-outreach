@@ -2,7 +2,12 @@
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
-from app.models.schemas import UserStatsResponse, CourseEnrollment
+from app.models.schemas import (
+    UserStatsResponse, 
+    CourseEnrollment, 
+    UserActiveStaffResponse,
+    ActiveCourseStaff
+)
 from app.services.outreach import outreach_client
 from app.services.refresh import refresh_manager
 from app.cache.redis import cache, make_key
@@ -56,6 +61,82 @@ async def get_user_courses(
     return await _transform_user_stats(username, raw_data, enrich)
 
 
+@router.get("/users/{username}/active-staff", response_model=UserActiveStaffResponse)
+async def get_user_active_staff(
+    username: str,
+    use_event_dates: bool = Query(
+        False, 
+        description="Use event dates (timeline_start/end) instead of activity tracking dates (start/end). Default uses activity tracking (more inclusive)."
+    )
+):
+    """
+    Get all staff members from user's active courses.
+    
+    This is a convenience endpoint that returns a deduplicated list of all
+    staff members (role >= 1) across all currently active courses where the
+    user is enrolled.
+    
+    By default, uses activity tracking dates (start/end) which are more inclusive.
+    Set use_event_dates=true to use event dates (timeline_start/end) instead.
+    
+    Returns:
+        - all_staff: Sorted, deduplicated list of all staff usernames
+        - courses: List of active courses with their staff members
+    """
+    cache_key = make_key("user", username)
+    
+    # Try cache first with stale-while-revalidate
+    cached_data, needs_refresh = await cache.get(
+        cache_key,
+        settings.user_cache_ttl,
+    )
+    
+    if cached_data is not None:
+        # Schedule background refresh if stale
+        if needs_refresh:
+            refresh_manager.schedule_refresh(
+                cache_key,
+                lambda: outreach_client.get_user_stats(username),
+                settings.user_cache_ttl,
+            )
+    else:
+        # Cache miss - fetch fresh data
+        cached_data = await outreach_client.get_user_stats(username)
+        if cached_data is None:
+            raise HTTPException(status_code=404, detail="User not found or API error")
+            
+        # Cache the response
+        await cache.set(cache_key, cached_data, settings.user_cache_ttl)
+    
+    # Get courses and enrich them
+    courses_details = cached_data.get("courses_details", [])
+    courses = [CourseEnrollment(**course) for course in courses_details]
+    enriched_courses = await _enrich_courses(courses)
+    
+    # Filter to active courses with staff
+    # Use activity tracking dates by default, event dates if requested
+    active_courses_with_staff = []
+    all_staff_set = set()
+    
+    for course in enriched_courses:
+        is_active = course.active_event if use_event_dates else course.active_tracking
+        if is_active is True and course.staff:
+            active_courses_with_staff.append(
+                ActiveCourseStaff(
+                    course_slug=course.course_slug,
+                    course_title=course.course_title,
+                    staff=course.staff,
+                )
+            )
+            all_staff_set.update(course.staff)
+    
+    return UserActiveStaffResponse(
+        username=username,
+        all_staff=sorted(all_staff_set),
+        courses=active_courses_with_staff,
+    )
+
+
 async def _transform_user_stats(
     username: str, 
     raw_data: dict, 
@@ -101,12 +182,13 @@ async def _enrich_courses(courses: list[CourseEnrollment]) -> list[CourseEnrollm
     Enrich courses with active status and staff list.
     
     Fetches course details and users from cache where possible.
+    Sets both active_event (timeline dates) and active_tracking (start/end dates).
     
     Args:
         courses: List of course enrollments
         
     Returns:
-        Enriched course enrollments with active and staff fields
+        Enriched course enrollments with active_event, active_tracking, and staff fields
     """
     now = datetime.now(timezone.utc)
     
@@ -131,21 +213,42 @@ async def _enrich_courses(courses: list[CourseEnrollment]) -> list[CourseEnrollm
         # Determine active status
         if course_data:
             course_info = course_data.get("course", {})
-            # Prefer timeline dates, fall back to start/end
-            start_str = course_info.get("timeline_start") or course_info.get("start")
-            end_str = course_info.get("timeline_end") or course_info.get("end")
+            
+            # Activity tracking dates (start/end) - broader window
+            tracking_start_str = course_info.get("start")
+            tracking_end_str = course_info.get("end")
+            
+            # Event dates (timeline_start/end) - narrower window for actual event
+            event_start_str = course_info.get("timeline_start")
+            event_end_str = course_info.get("timeline_end")
+            
+            # Store the raw date strings for client-side use
+            course.start = tracking_start_str
+            course.end = tracking_end_str
+            course.timeline_start = event_start_str
+            course.timeline_end = event_end_str
             
             try:
-                # Parse ISO-8601 datetime strings
-                start = datetime.fromisoformat(start_str.replace("Z", "+00:00")) if start_str else None
-                end = datetime.fromisoformat(end_str.replace("Z", "+00:00")) if end_str else None
-                
-                if start and end:
-                    course.active = start <= now <= end
+                # Parse activity tracking dates
+                if tracking_start_str and tracking_end_str:
+                    tracking_start = datetime.fromisoformat(tracking_start_str.replace("Z", "+00:00"))
+                    tracking_end = datetime.fromisoformat(tracking_end_str.replace("Z", "+00:00"))
+                    course.active_tracking = tracking_start <= now <= tracking_end
                 else:
-                    course.active = None
-            except (ValueError, AttributeError):
-                course.active = None
+                    course.active_tracking = None
+                    
+                # Parse event dates
+                if event_start_str and event_end_str:
+                    event_start = datetime.fromisoformat(event_start_str.replace("Z", "+00:00"))
+                    event_end = datetime.fromisoformat(event_end_str.replace("Z", "+00:00"))
+                    course.active_event = event_start <= now <= event_end
+                else:
+                    course.active_event = None
+                    
+            except (ValueError, AttributeError) as e:
+                # If parsing fails, leave as None
+                course.active_tracking = None
+                course.active_event = None
         
         # Try to get course users from cache
         users_cache_key = make_key("course_users", course.course_slug)

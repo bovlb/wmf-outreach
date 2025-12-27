@@ -12,8 +12,13 @@ class CourseEnrollment(BaseModel):
     user_count: int
     user_role: str
     course_slug: str
-    active: Optional[bool] = None
+    active_event: Optional[bool] = None
+    active_tracking: Optional[bool] = None
     staff: Optional[List[str]] = None
+    start: Optional[str] = None
+    end: Optional[str] = None
+    timeline_start: Optional[str] = None
+    timeline_end: Optional[str] = None
 
 
 class UserStatsResponse(BaseModel):
@@ -47,6 +52,8 @@ class CourseUsersResponse(BaseModel):
     facilitators: List[CourseUser]
     participants: List[CourseUser]
     all_users: List[CourseUser]
+    active_event: Optional[bool] = None
+    active_tracking: Optional[bool] = None
 
 
 class CourseDetails(BaseModel):
@@ -67,6 +74,9 @@ class CourseDetails(BaseModel):
     course_type: str = Field(alias="type")
     term: str
     student_count: int = 0
+    active_event: Optional[bool] = None
+    active_tracking: Optional[bool] = None
+    staff: Optional[List[str]] = None
     
     class Config:
         """Pydantic config."""
@@ -78,3 +88,17 @@ class HealthResponse(BaseModel):
     status: str
     redis_connected: bool
     uptime_seconds: float
+
+
+class ActiveCourseStaff(BaseModel):
+    """Staff information for an active course."""
+    course_slug: str
+    course_title: str
+    staff: List[str]
+
+
+class UserActiveStaffResponse(BaseModel):
+    """Response containing all staff from user's active courses."""
+    username: str
+    all_staff: List[str]
+    courses: List[ActiveCourseStaff]

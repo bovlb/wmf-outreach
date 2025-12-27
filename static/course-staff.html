@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Staff - Outreach Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #202122;
+            border-bottom: 1px solid #a2a9b1;
+            padding-bottom: 0.5em;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #54595d;
+        }
+        .error {
+            background: #fee7e6;
+            border: 1px solid #d73333;
+            padding: 15px;
+            border-radius: 3px;
+            color: #d73333;
+        }
+        .course {
+            background: #f8f9fa;
+            border: 1px solid #a2a9b1;
+            border-radius: 3px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .course-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .course-title a {
+            color: #0645ad;
+            text-decoration: none;
+        }
+        .course-title a:hover {
+            text-decoration: underline;
+        }
+        .course-meta {
+            color: #54595d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .course-meta a {
+            color: #0645ad;
+            text-decoration: none;
+        }
+        .course-meta a:hover {
+            text-decoration: underline;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .status-active {
+            background: #d5fdf4;
+            color: #14866d;
+        }
+        .status-tracking {
+            background: #eaf3ff;
+            color: #36c;
+        }
+        .staff-list {
+            margin-top: 10px;
+        }
+        .staff-member {
+            display: inline-block;
+            margin-right: 10px;
+            margin-bottom: 5px;
+        }
+        .staff-member a {
+            color: #0645ad;
+            text-decoration: none;
+        }
+        .staff-member a:hover {
+            text-decoration: underline;
+        }
+        .actions {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #a2a9b1;
+        }
+        .button {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #3366cc;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #2952a3;
+        }
+        .button-secondary {
+            background: #72777d;
+        }
+        .button-secondary:hover {
+            background: #54595d;
+        }
+        .summary {
+            background: #eaecf0;
+            padding: 15px;
+            border-radius: 3px;
+            margin-bottom: 20px;
+        }
+        .summary strong {
+            color: #202122;
+        }
+        .no-data {
+            padding: 40px;
+            text-align: center;
+            color: #54595d;
+        }
+        .copy-feedback {
+            display: inline-block;
+            margin-left: 10px;
+            color: #14866d;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <h1>Course Staff</h1>
+    <div id="content">
+        <div class="loading">Loading course information...</div>
+    </div>
+
+    <script>
+        // Get username from URL
+        const params = new URLSearchParams(window.location.search);
+        const username = params.get('username');
+
+        if (!username) {
+            document.getElementById('content').innerHTML = 
+                '<div class="error">No username specified.</div>';
+        } else {
+            loadCourseStaff(username);
+        }
+
+        async function loadCourseStaff(username) {
+            const apiBase = window.location.origin;
+            const outreachBase = 'https://outreachdashboard.wmflabs.org';
+
+            try {
+                // Fetch both active staff and enriched user data
+                const [staffResponse, userResponse] = await Promise.all([
+                    fetch(`${apiBase}/api/users/${encodeURIComponent(username)}/active-staff`),
+                    fetch(`${apiBase}/api/users/${encodeURIComponent(username)}?enrich=true`)
+                ]);
+                
+                if (!staffResponse.ok) {
+                    throw new Error(`HTTP ${staffResponse.status}`);
+                }
+
+                const staffData = await staffResponse.json();
+                const userData = userResponse.ok ? await userResponse.json() : null;
+
+                if (!staffData.all_staff || staffData.all_staff.length === 0) {
+                    document.getElementById('content').innerHTML = 
+                        '<div class="no-data">No active courses with staff found for this user.</div>';
+                    return;
+                }
+
+                renderCourseStaff(staffData, userData, outreachBase);
+            } catch (error) {
+                console.error('Error loading course staff:', error);
+                document.getElementById('content').innerHTML = 
+                    `<div class="error">Failed to load course staff: ${error.message}</div>`;
+            }
+        }
+
+        function renderCourseStaff(staffData, userData, outreachBase) {
+            const wikiBase = 'https://www.wikidata.org';
+            
+            // Create a map of course slugs to enriched course data
+            const courseMap = new Map();
+            if (userData && userData.courses) {
+                userData.courses.forEach(course => {
+                    courseMap.set(course.course_slug, course);
+                });
+            }
+            
+            // Sort courses: active_event first, then active_tracking, then by timeline_end (most recent first)
+            const sortedCourses = [...staffData.courses].sort((a, b) => {
+                const enrichedA = courseMap.get(a.course_slug);
+                const enrichedB = courseMap.get(b.course_slug);
+                
+                // Primary sort: active_event status (true before false)
+                const activeEventA = enrichedA?.active_event ? 1 : 0;
+                const activeEventB = enrichedB?.active_event ? 1 : 0;
+                if (activeEventA !== activeEventB) {
+                    return activeEventB - activeEventA; // Higher value (true) first
+                }
+                
+                // Secondary sort: active_tracking status (true before false)
+                const activeTrackingA = enrichedA?.active_tracking ? 1 : 0;
+                const activeTrackingB = enrichedB?.active_tracking ? 1 : 0;
+                if (activeTrackingA !== activeTrackingB) {
+                    return activeTrackingB - activeTrackingA;
+                }
+                
+                // Tertiary sort: by timeline_end date (most recent first)
+                // Use timeline_end if available, otherwise fall back to end
+                const dateA = enrichedA?.timeline_end || enrichedA?.end || '';
+                const dateB = enrichedB?.timeline_end || enrichedB?.end || '';
+                
+                if (dateA && dateB) {
+                    return dateB.localeCompare(dateA); // Reverse chronological (newer first)
+                }
+                
+                // If one has a date and the other doesn't, prefer the one with a date
+                if (dateA && !dateB) return -1;
+                if (!dateA && dateB) return 1;
+                
+                // Fall back to alphabetical by title
+                return a.course_title.localeCompare(b.course_title);
+            });
+            
+            let html = `
+                <div class="summary">
+                    <strong>${escapeHtml(staffData.username)}</strong> is enrolled in 
+                    <strong>${staffData.courses.length}</strong> active course(s) with 
+                    <strong>${staffData.all_staff.length}</strong> staff member(s).
+                </div>
+                
+                <div class="actions">
+                    <button class="button" onclick="copyPingTemplate()">
+                        Copy ping template
+                    </button>
+                    <a href="${outreachBase}/users/${encodeURIComponent(staffData.username)}" 
+                       class="button button-secondary" 
+                       target="_blank" 
+                       rel="noopener">
+                        View on Outreach Dashboard
+                    </a>
+                    <span id="copy-feedback" class="copy-feedback" style="display:none;">
+                        ✓ Copied to clipboard!
+                    </span>
+                </div>
+            `;
+
+            // List each course (sorted)
+            sortedCourses.forEach(course => {
+                const courseUrl = `${outreachBase}/courses/${course.course_slug}`;
+                const studentsUrl = `${courseUrl}/students/overview`;
+                const enrichedCourse = courseMap.get(course.course_slug);
+                
+                // Determine status badge
+                let statusBadge = '';
+                if (enrichedCourse) {
+                    if (enrichedCourse.active_event) {
+                        statusBadge = '<span class="status-badge status-active">● Active</span>';
+                    } else if (enrichedCourse.active_tracking) {
+                        statusBadge = '<span class="status-badge status-tracking">○ Tracking</span>';
+                    }
+                }
+                
+                html += `
+                    <div class="course">
+                        <div class="course-title">
+                            <a href="${courseUrl}" target="_blank" rel="noopener">
+                                ${escapeHtml(course.course_title)}
+                            </a>
+                            ${statusBadge}
+                        </div>
+                `;
+                
+                // Add course metadata if available
+                if (enrichedCourse) {
+                    const metaParts = [];
+                    
+                    if (enrichedCourse.course_term) {
+                        metaParts.push(escapeHtml(enrichedCourse.course_term));
+                    }
+                    
+                    if (enrichedCourse.user_count > 0) {
+                        metaParts.push(`<a href="${studentsUrl}" target="_blank" rel="noopener">${enrichedCourse.user_count} student${enrichedCourse.user_count === 1 ? '' : 's'}</a>`);
+                    }
+                    
+                    if (enrichedCourse.user_role) {
+                        metaParts.push(`Role: ${escapeHtml(enrichedCourse.user_role)}`);
+                    }
+                    
+                    if (metaParts.length > 0) {
+                        html += `<div class="course-meta">${metaParts.join(' • ')}</div>`;
+                    }
+                }
+                
+                html += `
+                        <div class="staff-list">
+                            <strong>Staff:</strong>
+                            ${course.staff.map(staffMember => {
+                                const talkUrl = `${wikiBase}/wiki/User_talk:${encodeURIComponent(staffMember)}`;
+                                return `<span class="staff-member"><a href="${talkUrl}" target="_blank" rel="noopener">${escapeHtml(staffMember)}</a></span>`;
+                            }).join(', ')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('content').innerHTML = html;
+
+            // Store data for copy function
+            window.courseStaffData = staffData;
+        }
+
+        function copyPingTemplate() {
+            if (!window.courseStaffData) return;
+
+            // Ping template can handle up to 6 users at once
+            const staff = window.courseStaffData.all_staff;
+            const chunks = [];
+            
+            for (let i = 0; i < staff.length; i += 6) {
+                const chunk = staff.slice(i, i + 6);
+                chunks.push(`{{ping|${chunk.join('|')}}}`);
+            }
+            
+            const pings = chunks.join(' ');
+
+            navigator.clipboard.writeText(pings).then(() => {
+                const feedback = document.getElementById('copy-feedback');
+                feedback.style.display = 'inline-block';
+                setTimeout(() => {
+                    feedback.style.display = 'none';
+                }, 3000);
+            }).catch(err => {
+                alert('Failed to copy to clipboard: ' + err.message);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

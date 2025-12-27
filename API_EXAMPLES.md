@@ -44,11 +44,45 @@ curl -s "http://localhost:8000/api/users/PegCult?enrich=true" | \
       map({status: (.[0] // "unknown"), count: length})'
 ```
 
+### Get all staff from user's active courses
+```bash
+# Uses activity tracking dates (default, more inclusive)
+curl http://localhost:8000/api/users/PegCult/active-staff
+
+# Uses event dates (narrower window)
+curl "http://localhost:8000/api/users/PegCult/active-staff?use_event_dates=true"
+```
+
+### Get just the list of staff usernames
+```bash
+curl -s http://localhost:8000/api/users/PegCult/active-staff | jq '.all_staff'
+```
+
+### Generate ping mentions for all staff
+```bash
+curl -s http://localhost:8000/api/users/PegCult/active-staff | \
+  jq -r '.all_staff[] | "{{ping|\(.)}}"'
+```
+
+### Compare activity tracking vs event dates
+```bash
+echo "Activity tracking (broader):"
+curl -s http://localhost:8000/api/users/PegCult/active-staff | jq '.all_staff'
+
+echo "Event dates (narrower):"
+curl -s "http://localhost:8000/api/users/PegCult/active-staff?use_event_dates=true" | jq '.all_staff'
+```
+
 ## Course Endpoints
 
 ### Get course users/roster
 ```bash
 curl "http://localhost:8000/api/courses/Igbo_Wikimedian_User_Group,_WAFTAI/Wikidata_Days_IWUG_and_WAFTAI_2025_(November)/users"
+```
+
+### Get course users with active status
+```bash
+curl "http://localhost:8000/api/courses/SCHOOL/TITLE/users?enrich=true"
 ```
 
 ### Get only facilitators
@@ -68,10 +102,20 @@ curl -s "http://localhost:8000/api/courses/SCHOOL/TITLE/users" | \
 curl "http://localhost:8000/api/courses/Igbo_Wikimedian_User_Group,_WAFTAI/Wikidata_Days_IWUG_and_WAFTAI_2025_(November)"
 ```
 
+### Get course details with active status and staff
+```bash
+curl "http://localhost:8000/api/courses/SCHOOL/TITLE?enrich=true"
+```
+
 ### Check if course is currently active
 ```bash
+# Basic check
 curl -s "http://localhost:8000/api/courses/SCHOOL/TITLE" | \
   jq '{title: .title, ended: .ended, start: .start, end: .end}'
+
+# With enrichment (includes active_event and active_tracking)
+curl -s "http://localhost:8000/api/courses/SCHOOL/TITLE?enrich=true" | \
+  jq '{title: .title, active_event: .active_event, active_tracking: .active_tracking}'
 ```
 
 ## Advanced Examples
