@@ -8,7 +8,86 @@ This guide covers deployment to Wikimedia Toolforge.
 2. **Tool approved**: Create a tool via `toolforge tools create <toolname>`
 3. **SSH access**: `ssh <username>@login.toolforge.org`
 
-## Initial Setup
+## Deployment Methods
+
+Toolforge supports two deployment approaches. The **buildpack method** (recommended) is simpler and more modern.
+
+---
+
+## Method 1: Buildpack Deployment (Recommended)
+
+This method builds a container image directly from your Git repository.
+
+### 1. Connect to Toolforge
+
+```bash
+ssh <username>@login.toolforge.org
+become <toolname>
+```
+
+### 2. Configure environment variables
+
+```bash
+# Set Redis configuration
+toolforge envvars create REDIS_HOST redis.svc.eqiad.wmflabs
+toolforge envvars create REDIS_PORT 6379
+
+# Optional: customize cache TTLs
+toolforge envvars create USER_CACHE_TTL 3600
+toolforge envvars create COURSE_CACHE_TTL 86400
+```
+
+### 3. Build from Git repository
+
+```bash
+# Build the container image from your Git repository
+toolforge build start https://github.com/bovlb/wmf-outreach.git
+```
+
+This will:
+- Clone the repository
+- Detect Python and install dependencies from `requirements.txt`
+- Build a container image
+- Tag it for use with webservice
+
+You can check build status:
+```bash
+toolforge build show
+```
+
+### 4. Start the webservice
+
+```bash
+# Start using the built image
+toolforge webservice buildservice start
+```
+
+### 5. Access your service
+
+Your service will be available at:
+```
+https://<toolname>.toolforge.org
+```
+
+### Updating with buildpack
+
+When you push changes to your Git repository:
+
+```bash
+# Rebuild from latest Git
+toolforge build start https://github.com/bovlb/wmf-outreach.git
+
+# Restart the webservice to use new image
+toolforge webservice buildservice restart
+```
+
+---
+
+## Method 2: Traditional Deployment (Alternative)
+
+## Method 2: Traditional Deployment (Alternative)
+
+This method involves manually cloning the repository and managing dependencies.
 
 ### 1. Clone repository on Toolforge
 
@@ -16,7 +95,7 @@ This guide covers deployment to Wikimedia Toolforge.
 ssh <username>@login.toolforge.org
 become <toolname>
 cd ~
-git clone <repository-url> .
+git clone https://github.com/bovlb/wmf-outreach.git .
 ```
 
 ### 2. Install dependencies
@@ -48,67 +127,30 @@ toolforge envvars create COURSE_CACHE_TTL 86400
 chmod +x toolforge/start.sh
 ```
 
-## Starting the Service
-
-### Option A: Using webservice command
+### 5. Start the webservice
 
 ```bash
-# Start the webservice
+# Start using traditional method
 webservice --backend=kubernetes python3.11 start
 ```
 
-This will automatically look for and execute `toolforge/start.sh`.
+This will automatically execute `toolforge/start.sh`.
 
-### Option B: Custom buildpack (if needed)
+### Updating with traditional method
 
-If you need more control, create a `service.template`:
+```bash
+# Pull latest changes
+git pull
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ tool }}
-spec:
-  type: NodePort
-  ports:
-    - port: 8000
-      protocol: TCP
-      targetPort: 8000
-  selector:
-    name: {{ tool }}
+# Update dependencies
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Restart service
+webservice --backend=kubernetes restart
+```
+
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ tool }}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      name: {{ tool }}
-  template:
-    metadata:
-      labels:
-        name: {{ tool }}
-    spec:
-      containers:
-        - name: {{ tool }}
-          image: {{ image }}
-          command: ["/data/project/{{ tool }}/toolforge/start.sh"]
-          ports:
-            - containerPort: 8000
-          env:
-            - name: PORT
-              value: "8000"
-```
-
-## Accessing the Service
-
-Your service will be available at:
-
-```
-https://<toolname>.toolforge.org
-```
 
 ## Testing Endpoints
 
@@ -131,46 +173,64 @@ curl https://<toolname>.toolforge.org/api/courses/SCHOOL/TITLE_SLUG
 ### View logs
 
 ```bash
-# Using kubectl
-kubectl logs -l name=<toolname> --tail=100 -f
+# For buildpack deployment
+toolforge webservice buildservice logs
 
-# Or webservice logs
+# For traditional deployment
 webservice --backend=kubernetes logs
+
+# Or using kubectl directly
+kubectl logs -l name=<toolname> --tail=100 -f
 ```
 
 ### Check service status
 
 ```bash
+# For buildpack deployment
+toolforge webservice buildservice status
+
+# For traditional deployment
 webservice --backend=kubernetes status
 ```
 
-## Updating the Service
+### Check build status
 
 ```bash
-# 1. Pull latest changes
-git pull
-
-# 2. Install new dependencies (if any)
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 3. Restart service
-webservice --backend=kubernetes restart
+# Only for buildpack method
+toolforge build show
+toolforge build logs
 ```
 
 ## Stopping the Service
 
 ```bash
+# For buildpack deployment
+toolforge webservice buildservice stop
+
+# For traditional deployment
 webservice --backend=kubernetes stop
 ```
 
 ## Troubleshooting
 
+### Build fails
+
+```bash
+# Check build logs
+toolforge build logs
+
+# Common issues:
+# - Missing requirements.txt
+# - Invalid Python version in requirements
+# - Dependency conflicts
+```
+
 ### Service won't start
 
-1. Check logs: `webservice --backend=kubernetes logs`
+1. Check logs: `toolforge webservice buildservice logs`
 2. Verify Redis access: `redis-cli -h redis.svc.eqiad.wmflabs ping`
 3. Check environment variables: `toolforge envvars list`
+4. Verify build completed: `toolforge build show`
 
 ### Redis connection issues
 
@@ -184,12 +244,18 @@ redis-cli -h redis.svc.eqiad.wmflabs -p 6379 ping
 
 The service uses the `$PORT` environment variable provided by Toolforge. Don't hardcode port numbers.
 
-### Memory limits
+### Memory or resource limits
 
-Default Kubernetes pods have limited memory. If you need more:
+If you need more resources with buildpack:
 
 ```bash
-# Request larger pod
+# The buildpack method uses standard Kubernetes resources
+# Contact Toolforge admins if you need increased limits
+```
+
+For traditional method with custom jobs:
+
+```bash
 toolforge jobs run --command "./toolforge/start.sh" --image python3.11 --mem 1Gi my-job
 ```
 
@@ -249,6 +315,9 @@ toolforge envvars create USER_CACHE_TTL 1800  # 30 minutes
 
 # Longer TTL for stable data
 toolforge envvars create COURSE_CACHE_TTL 604800  # 7 days
+
+# Restart to apply changes
+toolforge webservice buildservice restart  # or webservice --backend=kubernetes restart
 ```
 
 ### Increase worker count
@@ -259,8 +328,31 @@ Edit `toolforge/start.sh` to add more workers:
 exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers 4
 ```
 
+Then rebuild and restart:
+```bash
+# For buildpack
+toolforge build start https://github.com/bovlb/wmf-outreach.git
+toolforge webservice buildservice restart
+
+# For traditional
+git pull
+webservice --backend=kubernetes restart
+```
+
+## Comparison: Buildpack vs Traditional
+
+| Feature | Buildpack (Recommended) | Traditional |
+|---------|------------------------|-------------|
+| **Setup complexity** | Low - one command | High - manual steps |
+| **Updates** | Rebuild from Git | Pull + restart |
+| **Reproducibility** | High - containerized | Medium - depends on env |
+| **Disk usage** | Low - no local clone needed | Higher - full repo + venv |
+| **Debugging** | Check build logs | Direct file access |
+| **Best for** | Production, CI/CD | Development, customization |
+
 ## References
 
+- [Toolforge Build Service](https://wikitech.wikimedia.org/wiki/Help:Toolforge/Build_Service)
 - [Toolforge Web Services](https://wikitech.wikimedia.org/wiki/Help:Toolforge/Web)
 - [Toolforge Redis](https://wikitech.wikimedia.org/wiki/Help:Toolforge/Redis)
 - [Toolforge Kubernetes](https://wikitech.wikimedia.org/wiki/Help:Toolforge/Kubernetes)
