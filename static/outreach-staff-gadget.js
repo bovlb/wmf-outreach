@@ -12,8 +12,8 @@
   'use strict';
 
   // Configuration - UPDATE THIS with your service URL
-  const API_BASE = 'http://localhost:8000'; // For local testing
-  // const API_BASE = 'https://YOUR-TOOL.toolforge.org'; // For production
+//   const API_BASE = 'http://localhost:8000'; // For local testing
+  const API_BASE = 'https://outreach.toolforge.org'; // For production
 
   const OUTREACH_BASE = 'https://outreachdashboard.wmflabs.org';
 

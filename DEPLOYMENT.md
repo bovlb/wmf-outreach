@@ -29,7 +29,7 @@ become <toolname>
 
 ```bash
 # Set Redis configuration
-toolforge envvars create REDIS_HOST redis.svc.eqiad.wmflabs
+toolforge envvars create REDIS_HOST redis.svc.tools.eqiad1.wikimedia.cloud
 toolforge envvars create REDIS_PORT 6379
 
 # Optional: customize cache TTLs
