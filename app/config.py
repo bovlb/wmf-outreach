@@ -8,10 +8,17 @@ class Settings(BaseSettings):
     """Application settings."""
     
     # Redis configuration
+    # For Toolforge: use redis.svc.tools.eqiad1.wikimedia.cloud
+    # For local development: use localhost
     redis_host: str = os.getenv("REDIS_HOST", "localhost")
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
     redis_db: int = 0
     redis_password: Optional[str] = None
+    
+    # Redis key prefix (CRITICAL for Toolforge multi-tenant environment)
+    # Generate with: openssl rand -base64 32
+    # Set via environment variable or .env file
+    redis_key_prefix: str = os.getenv("REDIS_KEY_PREFIX", "dev:")
     
     # Cache TTL settings (in seconds)
     user_cache_ttl: int = 3600  # 1 hour

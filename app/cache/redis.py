@@ -12,6 +12,11 @@ class RedisCache:
     def __init__(self):
         """Initialize Redis connection."""
         self.redis: Optional[redis.Redis] = None
+        self.key_prefix = settings.redis_key_prefix
+        
+    def _make_key(self, key: str) -> str:
+        """Add prefix to key for multi-tenant isolation."""
+        return f"{self.key_prefix}{key}"
         
     async def connect(self):
         """Establish Redis connection."""
@@ -33,7 +38,7 @@ class RedisCache:
         Get cached value with stale-while-revalidate semantics.
         
         Args:
-            key: Cache key
+            key: Cache key (will be prefixed automatically)
             max_age: Maximum age in seconds before data is considered fresh
             
         Returns:
@@ -44,7 +49,8 @@ class RedisCache:
         if not self.redis:
             return None, False
             
-        raw = await self.redis.get(key)
+        prefixed_key = self._make_key(key)
+        raw = await self.redis.get(prefixed_key)
         if not raw:
             return None, False
             
@@ -76,7 +82,7 @@ class RedisCache:
         Store data in cache with timestamp.
         
         Args:
-            key: Cache key
+            key: Cache key (will be prefixed automatically)
             data: Data to cache
             ttl: Time to live in seconds
         """
@@ -90,18 +96,21 @@ class RedisCache:
         
         # Set expiry to stale grace period
         expire = int(ttl * settings.stale_ttl_multiplier)
-        await self.redis.setex(key, expire, json.dumps(cached))
+        prefixed_key = self._make_key(key)
+        await self.redis.setex(prefixed_key, expire, json.dumps(cached))
         
     async def delete(self, key: str):
         """Delete a cache entry."""
         if self.redis:
-            await self.redis.delete(key)
+            prefixed_key = self._make_key(key)
+            await self.redis.delete(prefixed_key)
             
     async def exists(self, key: str) -> bool:
         """Check if a key exists in cache."""
         if not self.redis:
             return False
-        return await self.redis.exists(key) > 0
+        prefixed_key = self._make_key(key)
+        return await self.redis.exists(prefixed_key) > 0
 
 
 # Global cache instance
