@@ -1,9 +1,12 @@
 /**
  * Outreach Dashboard Course Staff Gadget
  * 
- * Adds an "Outreach" tab to user-related pages for users who are participants
- * in currently active Outreach Dashboard courses. Clicking the tab displays
- * staff information inline on the page.
+ * Adds an "Outreach" tab to user-related pages for users who have any presence
+ * on the Outreach Dashboard. Clicking the tab opens a modal dialog showing
+ * staff information. The tab includes a traffic light indicator:
+ * - 🟢 Green: User has courses with active events
+ * - 🟡 Yellow: User has courses being tracked (event ended)
+ * - 🔴 Red: User has courses but none are currently active/tracked
  * 
  * Usage: Install as a MediaWiki gadget or load from your common.js
  */
@@ -68,6 +71,15 @@
     }
 
     return null;
+  }
+
+  /**
+   * Fetch user dashboard status (lightweight check).
+   */
+  async function fetchUserStatus(username) {
+    const resp = await fetch(`${API_BASE}/api/users/${encodeURIComponent(username)}/status`, { credentials: 'omit' });
+    if (!resp.ok) return null;
+    return await resp.json();
   }
 
   /**
@@ -197,7 +209,7 @@
   }
 
   /**
-   * Add CSS styles for the section.
+   * Add CSS styles for the modal and content.
    */
   function addStyles() {
     if (document.getElementById('mw-outreach-styles')) return;
@@ -205,6 +217,93 @@
     const style = document.createElement('style');
     style.id = 'mw-outreach-styles';
     style.textContent = `
+      /* Modal overlay */
+      .mw-outreach-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .mw-outreach-modal {
+        background: white;
+        border-radius: 4px;
+        max-width: 800px;
+        width: 100%;
+        max-height: 90vh;
+        overflow: auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        position: relative;
+      }
+      .mw-outreach-modal-header {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        border-bottom: 1px solid #a2a9b1;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        z-index: 1;
+      }
+      .mw-outreach-modal-title {
+        font-size: 1.3em;
+        font-weight: bold;
+        margin: 0;
+      }
+      .mw-outreach-modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        line-height: 1;
+        cursor: pointer;
+        color: #72777d;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 2px;
+      }
+      .mw-outreach-modal-close:hover {
+        background: #eaecf0;
+        color: #000;
+      }
+      .mw-outreach-modal-body {
+        padding: 20px;
+      }
+      .mw-outreach-loading {
+        text-align: center;
+        padding: 40px;
+        color: #72777d;
+      }
+      
+      /* Tab indicator */
+      .mw-outreach-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-left: 6px;
+        vertical-align: middle;
+      }
+      .mw-outreach-indicator-active {
+        background: #14866d;
+        box-shadow: 0 0 4px rgba(20, 134, 109, 0.5);
+      }
+      .mw-outreach-indicator-tracking {
+        background: #fc3;
+        box-shadow: 0 0 4px rgba(255, 204, 51, 0.5);
+      }
+      .mw-outreach-indicator-inactive {
+        background: #72777d;
+      }
+      
+      /* Content styles */
       .mw-outreach-page {
         line-height: 1.6;
       }
@@ -286,104 +385,236 @@
   }
 
   /**
-   * Add the Outreach tab and set up click handler.
+   * Add the Outreach tab with status indicator.
    */
-  async function addOutreachTab(username) {
-    // Add tab to page with hash URL
+  function addOutreachTab(username, status) {
+    // Determine indicator class based on status
+    let indicatorClass = 'mw-outreach-indicator-inactive';
+    let tooltip = 'View Outreach Dashboard information';
+    
+    if (status.has_active_event) {
+      indicatorClass = 'mw-outreach-indicator-active';
+      tooltip = `Active events: ${status.active_event_count} course(s) with ongoing events`;
+    } else if (status.has_active_tracking) {
+      indicatorClass = 'mw-outreach-indicator-tracking';
+      tooltip = `Being tracked: ${status.tracked_count} course(s) being tracked`;
+    } else if (status.has_any_courses) {
+      tooltip = `${status.total_courses} course(s) on dashboard (not currently active)`;
+    }
+    
+    // Create tab with indicator
     const tab = mw.util.addPortletLink(
       'p-views',
-      '#Outreach',
+      '#',
       'Outreach',
       'ca-outreach',
-      'View Outreach Dashboard course staff',
+      tooltip,
       null,
       '#ca-history'
     );
     
     if (!tab) return;
     
-    // Handle tab click
+    // Add indicator dot to the tab
+    const link = tab.querySelector('a');
+    if (link) {
+      const indicator = document.createElement('span');
+      indicator.className = `mw-outreach-indicator ${indicatorClass}`;
+      link.appendChild(indicator);
+    }
+    
+    // Handle tab click - open modal
     tab.addEventListener('click', async function(e) {
       e.preventDefault();
-      
-      // Update URL hash
-      window.location.hash = 'Outreach';
-      
-      // Mark this tab as selected
-      document.querySelectorAll('#p-views li').forEach(el => el.classList.remove('selected'));
-      this.classList.add('selected');
-      
-      // Replace page content with Outreach view
-      await showOutreachContent(username);
+      await showOutreachModal(username, status);
+    });
+  }
+  
+  /**
+   * Show the outreach modal dialog.
+   */
+  async function showOutreachModal(username, status) {
+    addStyles();
+    
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'mw-outreach-modal-overlay';
+    
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'mw-outreach-modal';
+    
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'mw-outreach-modal-header';
+    
+    const title = document.createElement('h2');
+    title.className = 'mw-outreach-modal-title';
+    title.textContent = `Outreach Dashboard: ${username}`;
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'mw-outreach-modal-close';
+    closeBtn.innerHTML = '×';
+    closeBtn.title = 'Close';
+    
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    
+    // Create body
+    const body = document.createElement('div');
+    body.className = 'mw-outreach-modal-body';
+    body.innerHTML = '<div class="mw-outreach-loading">Loading...</div>';
+    
+    modal.appendChild(header);
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Close handlers
+    const closeModal = () => {
+      overlay.remove();
+    };
+    
+    closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
     });
     
-    // Check if we should auto-show based on hash
-    if (window.location.hash === '#Outreach') {
-      // Simulate a click to show the content
-      tab.click();
+    // ESC key handler
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+    
+    // Load content
+    try {
+      const data = await fetchCourseStaff(username);
+      
+      if (!data) {
+        // No active courses - show all courses instead
+        const userResp = await fetch(`${API_BASE}/api/users/${encodeURIComponent(username)}?enrich=true`, { credentials: 'omit' });
+        if (userResp.ok) {
+          const userData = await userResp.json();
+          body.innerHTML = renderAllCoursesPage(userData, status);
+        } else {
+          body.innerHTML = `
+            <div class="mw-outreach-page">
+              <p>User has ${status.total_courses} course(s) on the dashboard, but none are currently active.</p>
+              <p><a href="${OUTREACH_BASE}/users/${encodeURIComponent(username)}" target="_blank" rel="noopener">View on Outreach Dashboard</a></p>
+            </div>
+          `;
+        }
+      } else {
+        const { staffData, userData } = data;
+        body.innerHTML = renderOutreachPage(staffData, userData);
+        
+        // Add copy button handler
+        const copyBtn = body.querySelector('.mw-outreach-copy-btn');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', function() {
+            const allStaff = JSON.parse(this.getAttribute('data-all-staff'));
+            const chunks = [];
+            for (let i = 0; i < allStaff.length; i += 6) {
+              const chunk = allStaff.slice(i, i + 6);
+              chunks.push(`{{ping|${chunk.join('|')}}}`);
+            }
+            navigator.clipboard.writeText(chunks.join(' '));
+            
+            const originalText = this.textContent;
+            this.textContent = '✓ Copied!';
+            setTimeout(() => {
+              this.textContent = originalText;
+            }, 2000);
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Outreach modal error:', e);
+      body.innerHTML = `
+        <div class="mw-outreach-page">
+          <p class="error">Error loading course information: ${mw.html.escape(e.message)}</p>
+        </div>
+      `;
     }
   }
   
   /**
-   * Show the outreach content, replacing the current page content.
+   * Render page for users with courses but no active staff.
    */
-  async function showOutreachContent(username) {
-    try {
-      const data = await fetchCourseStaff(username);
-      
-      addStyles();
-      
-      // Get the main content area
-      const contentDiv = document.getElementById('mw-content-text');
-      if (!contentDiv) return;
-      
-      if (!data) {
-        contentDiv.innerHTML = `
-          <div class="mw-outreach-page">
-            <p>No active courses found for this user.</p>
-          </div>
-        `;
-        return;
-      }
-      
-      const { staffData, userData } = data;
-      
-      const html = renderOutreachPage(staffData, userData);
-      
-      // Replace the entire content
-      contentDiv.innerHTML = html;
-      
-      // Add copy button handler
-      const copyBtn = contentDiv.querySelector('.mw-outreach-copy-btn');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', function() {
-          const allStaff = JSON.parse(this.getAttribute('data-all-staff'));
-          const chunks = [];
-          for (let i = 0; i < allStaff.length; i += 6) {
-            const chunk = allStaff.slice(i, i + 6);
-            chunks.push(`{{ping|${chunk.join('|')}}}`);
-          }
-          navigator.clipboard.writeText(chunks.join(' '));
-          
-          const originalText = this.textContent;
-          this.textContent = '✓ Copied!';
-          setTimeout(() => {
-            this.textContent = originalText;
-          }, 2000);
-        });
-      }
-      
-    } catch (e) {
-      console.error('Outreach gadget error:', e);
-      const contentDiv = document.getElementById('mw-content-text');
-      if (contentDiv) {
-        contentDiv.innerHTML = `
-          <div class="mw-outreach-page">
-            <p class="error">Error loading course staff: ${mw.html.escape(e.message)}</p>
-          </div>
-        `;
-      }
+  function renderAllCoursesPage(userData, status) {
+    const wikiBase = window.location.origin;
+    let html = '<div class="mw-outreach-page"><div class="mw-outreach-section">';
+    
+    html += `<p><strong>${status.total_courses}</strong> course(s) on the dashboard.</p>`;
+    
+    if (status.active_event_count === 0 && status.tracked_count === 0) {
+      html += `<p>None are currently active or being tracked.</p>`;
     }
+    
+    html += `
+      <p class="mw-outreach-actions">
+        <a href="${OUTREACH_BASE}/users/${encodeURIComponent(userData.username)}" target="_blank" rel="noopener">View on Outreach Dashboard</a>
+      </p>
+    `;
+    
+    // Show courses if available
+    if (userData.courses && userData.courses.length > 0) {
+      const sortedCourses = [...userData.courses].sort((a, b) => {
+        const activeEventA = a.active_event ? 1 : 0;
+        const activeEventB = b.active_event ? 1 : 0;
+        if (activeEventA !== activeEventB) {
+          return activeEventB - activeEventA;
+        }
+        
+        const activeTrackingA = a.active_tracking ? 1 : 0;
+        const activeTrackingB = b.active_tracking ? 1 : 0;
+        if (activeTrackingA !== activeTrackingB) {
+          return activeTrackingB - activeTrackingA;
+        }
+        
+        const dateA = a.timeline_end || a.end || '';
+        const dateB = b.timeline_end || b.end || '';
+        
+        if (dateA && dateB) {
+          return dateB.localeCompare(dateA);
+        }
+        
+        return a.course_title.localeCompare(b.course_title);
+      });
+      
+      sortedCourses.forEach(course => {
+        const courseUrl = `${OUTREACH_BASE}/courses/${course.course_slug}`;
+        
+        let statusBadge = '';
+        if (course.active_event) {
+          statusBadge = '<span class="mw-outreach-badge mw-outreach-active" title="Event is currently happening">● Active</span>';
+        } else if (course.active_tracking) {
+          statusBadge = '<span class="mw-outreach-badge mw-outreach-tracking" title="Event has ended but activity is still being tracked">○ Tracking</span>';
+        }
+        
+        html += `<div class="mw-outreach-course">`;
+        html += `<div class="mw-outreach-course-title"><a href="${courseUrl}" target="_blank" rel="noopener">${mw.html.escape(course.course_title)}</a> ${statusBadge}</div>`;
+        
+        const metaParts = [];
+        if (course.course_term) {
+          metaParts.push(mw.html.escape(course.course_term));
+        }
+        if (course.user_role) {
+          metaParts.push(`Role: ${mw.html.escape(course.user_role)}`);
+        }
+        if (metaParts.length > 0) {
+          html += `<div class="mw-outreach-meta">${metaParts.join(' • ')}</div>`;
+        }
+        
+        html += `</div>`;
+      });
+    }
+    
+    html += '</div></div>';
+    return html;
   }
   
   /**
@@ -396,21 +627,42 @@
     const username = getTargetUsername();
     if (!username) return;
 
-    // Avoid duplicates
-    if (document.getElementById('ca-outreach')) return;
+    // Guard against multiple simultaneous initializations
+    const guardKey = 'outreach-gadget-initializing';
+    if (window[guardKey]) {
+      console.debug('Outreach gadget: Already initializing, skipping duplicate');
+      return;
+    }
+    
+    // Avoid duplicates - check for existing tab
+    if (document.getElementById('ca-outreach')) {
+      console.debug('Outreach gadget: Tab already exists, skipping duplicate');
+      return;
+    }
+    
+    // Set guard flag
+    window[guardKey] = true;
 
-    // Check if user has active courses before adding tab
+    // Check if user has any dashboard presence
     try {
-      const resp = await fetch(`${API_BASE}/api/users/${encodeURIComponent(username)}/active-staff`, { credentials: 'omit' });
-      if (!resp.ok) return;
+      const status = await fetchUserStatus(username);
+      if (!status || !status.has_any_courses) return;
       
-      const data = await resp.json();
-      if (!data.all_staff || data.all_staff.length === 0) return;
+      // Double-check before adding tab (race condition protection)
+      if (document.getElementById('ca-outreach')) {
+        console.debug('Outreach gadget: Tab appeared during initialization, skipping');
+        return;
+      }
       
-      // Add the tab
-      await addOutreachTab(username);
+      // Add the tab with status indicator
+      addOutreachTab(username, status);
     } catch (e) {
       console.error('Outreach gadget initialization error:', e);
+    } finally {
+      // Clear guard flag after a short delay to allow for legitimate re-runs on different pages
+      setTimeout(() => {
+        delete window[guardKey];
+      }, 1000);
     }
   });
 })();

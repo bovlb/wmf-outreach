@@ -6,7 +6,8 @@ from app.models.schemas import (
     UserStatsResponse, 
     CourseEnrollment, 
     UserActiveStaffResponse,
-    ActiveCourseStaff
+    ActiveCourseStaff,
+    UserDashboardStatus
 )
 from app.services.outreach import outreach_client
 from app.services.refresh import refresh_manager
@@ -134,6 +135,77 @@ async def get_user_active_staff(
         username=username,
         all_staff=sorted(all_staff_set),
         courses=active_courses_with_staff,
+    )
+
+
+@router.get("/users/{username}/status", response_model=UserDashboardStatus)
+async def get_user_dashboard_status(username: str):
+    """
+    Get lightweight dashboard status for a user.
+    
+    This is a minimal endpoint optimized for quick checks to determine
+    if a user has any dashboard presence and their activity status.
+    
+    Returns:
+        - has_any_courses: Whether user has any course enrollments
+        - has_active_event: Whether user has any courses with active events
+        - has_active_tracking: Whether user has any courses being tracked
+        - active_event_count: Number of courses with active events
+        - tracked_count: Number of courses being tracked (includes active events)
+        - total_courses: Total number of course enrollments
+    """
+    cache_key = make_key("user", username)
+    
+    # Try cache first with stale-while-revalidate
+    cached_data, needs_refresh = await cache.get(
+        cache_key,
+        settings.user_cache_ttl,
+    )
+    
+    if cached_data is not None:
+        # Schedule background refresh if stale
+        if needs_refresh:
+            refresh_manager.schedule_refresh(
+                cache_key,
+                lambda: outreach_client.get_user_stats(username),
+                settings.user_cache_ttl,
+            )
+    else:
+        # Cache miss - fetch fresh data
+        cached_data = await outreach_client.get_user_stats(username)
+        if cached_data is None:
+            # User not found - return empty status
+            return UserDashboardStatus(
+                username=username,
+                has_any_courses=False,
+                has_active_event=False,
+                has_active_tracking=False,
+                active_event_count=0,
+                tracked_count=0,
+                total_courses=0,
+            )
+            
+        # Cache the response
+        await cache.set(cache_key, cached_data, settings.user_cache_ttl)
+    
+    # Get courses and enrich them
+    courses_details = cached_data.get("courses_details", [])
+    courses = [CourseEnrollment(**course) for course in courses_details]
+    enriched_courses = await _enrich_courses(courses)
+    
+    # Calculate status
+    total_courses = len(enriched_courses)
+    active_event_count = sum(1 for c in enriched_courses if c.active_event is True)
+    tracked_count = sum(1 for c in enriched_courses if c.active_tracking is True)
+    
+    return UserDashboardStatus(
+        username=username,
+        has_any_courses=total_courses > 0,
+        has_active_event=active_event_count > 0,
+        has_active_tracking=tracked_count > 0,
+        active_event_count=active_event_count,
+        tracked_count=tracked_count,
+        total_courses=total_courses,
     )
 
 

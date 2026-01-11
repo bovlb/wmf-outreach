@@ -102,3 +102,14 @@ class UserActiveStaffResponse(BaseModel):
     username: str
     all_staff: List[str]
     courses: List[ActiveCourseStaff]
+
+
+class UserDashboardStatus(BaseModel):
+    """Lightweight user dashboard status for quick checks."""
+    username: str
+    has_any_courses: bool
+    has_active_event: bool
+    has_active_tracking: bool
+    active_event_count: int
+    tracked_count: int
+    total_courses: int
