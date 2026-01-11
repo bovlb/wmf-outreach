@@ -22,15 +22,23 @@
             border-bottom: 2px solid #a2a9b1;
             padding: 10px;
             margin-bottom: 20px;
+            list-style: none;
+            display: flex;
+            gap: 10px;
+        }
+        #p-views li {
+            list-style: none;
+            display: inline-block;
         }
         #p-views a {
-            margin-right: 15px;
             padding: 5px 10px;
             text-decoration: none;
             color: #0645ad;
             background: white;
             border: 1px solid #a2a9b1;
             border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
         }
         #p-views a:hover {
             background: #eaecf0;
@@ -90,30 +98,50 @@
             config: {
                 values: {
                     'wgNamespaceNumber': 2,
-                    'wgTitle': 'TestUser',
-                    'wgRelevantUserName': 'TestUser',
-                    'wgPageName': 'User:TestUser',
+                    'wgTitle': 'Pharos',
+                    'wgRelevantUserName': 'Pharos',
+                    'wgPageName': 'User:Pharos',
                     'wgCanonicalSpecialPageName': null
                 },
                 get: function(key) { return this.values[key]; }
             },
+            html: {
+                escape: function(str) {
+                    const div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                }
+            },
             util: {
                 addPortletLink: function(portlet, url, text, id, tooltip, accesskey, before) {
-                    consoleLog('Adding tab: ' + text + ' -> ' + url, 'success');
+                    consoleLog('Adding tab: ' + text + ' (id: ' + id + ')', 'success');
                     const nav = document.getElementById('p-views') || document.body;
+                    
+                    // Create list item (like MediaWiki does)
+                    const li = document.createElement('li');
+                    li.id = id;
+                    
                     const link = document.createElement('a');
                     link.href = url;
                     link.textContent = text;
-                    link.id = id;
-                    link.title = tooltip;
-                    link.target = '_blank';
-                    nav.appendChild(link);
+                    link.title = tooltip || '';
+                    
+                    li.appendChild(link);
+                    nav.appendChild(li);
+                    
+                    return li; // Return the li element
                 }
             },
             loader: {
                 using: function(modules) {
                     consoleLog('Loading modules: ' + modules.join(', '), 'info');
-                    return Promise.resolve();
+                    return {
+                        then: function(callback) {
+                            // Execute callback immediately in test environment
+                            setTimeout(callback, 0);
+                            return this;
+                        }
+                    };
                 }
             }
         };
@@ -230,11 +258,10 @@
 
     <!-- Simulated MediaWiki tabs -->
     <div id="p-views">
-        <strong>Page tabs:</strong>
-        <a href="#" onclick="return false;">Read</a>
-        <a href="#" onclick="return false;">Edit</a>
-        <a href="#" onclick="return false;">History</a>
-        <!-- Course staff tab will be added here by gadget -->
+        <li><a href="#" onclick="return false;">Read</a></li>
+        <li><a href="#" onclick="return false;">Edit</a></li>
+        <li><a href="#" onclick="return false;">History</a></li>
+        <!-- Outreach tab will be added here by gadget -->
     </div>
 
     <!-- Simulated page content -->

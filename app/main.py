@@ -90,3 +90,14 @@ async def serve_gadget_html():
         media_type="text/html",
         headers={"Cache-Control": "no-cache"}  # For development
     )
+
+
+@app.get("/test-gadget.html", response_class=HTMLResponse)
+async def serve_test_page():
+    """Serve the gadget test page."""
+    test_file = STATIC_DIR.parent / "test-gadget.html"
+    return FileResponse(
+        test_file,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"}  # For development
+    )

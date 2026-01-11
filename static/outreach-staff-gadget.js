@@ -643,6 +643,9 @@
     // Set guard flag
     window[guardKey] = true;
 
+    // Add styles early so indicator shows properly
+    addStyles();
+
     // Check if user has any dashboard presence
     try {
       const status = await fetchUserStatus(username);
