@@ -197,8 +197,15 @@
         
         <div style="margin-bottom: 15px;">
             <label for="username-input"><strong>Username:</strong></label>
-            <input type="text" id="username-input" placeholder="TestUser" value="TestUser">
+            <input type="text" id="username-input" placeholder="TestUser" value="Pharos">
             <button onclick="changeUsername(); reloadGadget();">Change Username & Reload</button>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <strong>Test Scenarios:</strong><br>
+            <button onclick="testUser('Pharos')">Pharos (Active Events)</button>
+            <button onclick="testUser('Sannita')">Sannita (Inactive)</button>
+            <button onclick="testUser('NonexistentUser123')">Nonexistent User</button>
         </div>
 
         <div>
@@ -263,6 +270,12 @@
             document.getElementById('page-title').textContent = pageName.replace(/_/g, ' ');
             document.getElementById('current-page-type').textContent = pageType;
             document.getElementById('detected-username').textContent = mw.config.get('wgRelevantUserName') || 'N/A';
+        }
+        
+        function testUser(username) {
+            document.getElementById('username-input').value = username;
+            changeUsername();
+            reloadGadget();
         }
         
         updatePageInfo();
