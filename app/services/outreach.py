@@ -1,6 +1,7 @@
 """HTTP client for Outreach Dashboard API."""
 import httpx
 from typing import Optional, Dict, Any
+from urllib.parse import quote
 from app.config import settings
 
 
@@ -22,12 +23,13 @@ class OutreachDashboardClient:
         Returns:
             User stats JSON or None on error
         """
-        url = f"{self.base_url}/user_stats.json"
-        params = {"username": username}
+        # User stats moved from a query parameter to a username path segment.
+        # Encode reserved characters so usernames cannot alter the request URL.
+        url = f"{self.base_url}/users/{quote(username, safe='')}/stats.json"
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                response = await client.get(url, params=params)
+                response = await client.get(url)
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, ValueError) as e:

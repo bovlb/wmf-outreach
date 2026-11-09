@@ -8,7 +8,7 @@ from app.config import settings
 
 
 @pytest.mark.asyncio
-async def test_enrich_courses_with_cached_data():
+async def test_enrich_courses_with_cached_data(memory_cache):
     """Test enrichment when course data is already cached."""
     # Connect cache
     await cache.connect()
@@ -60,7 +60,8 @@ async def test_enrich_courses_with_cached_data():
         
         # Verify
         assert len(enriched) == 1
-        assert enriched[0].active is True
+        assert enriched[0].active_event is True
+        assert enriched[0].active_tracking is None
         assert enriched[0].staff == ["Alice", "Bob"]  # Sorted, role >= 1
         
     finally:
@@ -69,7 +70,7 @@ async def test_enrich_courses_with_cached_data():
 
 
 @pytest.mark.asyncio
-async def test_enrich_courses_inactive():
+async def test_enrich_courses_inactive(memory_cache):
     """Test enrichment with an inactive course."""
     await cache.connect()
     
@@ -117,7 +118,8 @@ async def test_enrich_courses_inactive():
         enriched = await _enrich_courses([test_course])
         
         # Verify
-        assert enriched[0].active is False
+        assert enriched[0].active_tracking is False
+        assert enriched[0].active_event is None
         assert enriched[0].staff == []  # No staff members
         
     finally:

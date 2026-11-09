@@ -234,11 +234,10 @@ async def _transform_user_stats(
     
     # Determine role status
     # role >= 1 means facilitator/instructor
-    is_instructor = any(
-        c.user_role != "student" or c.user_role == "instructor" 
-        for c in courses
-    )
-    is_student = any(c.user_role == "student" for c in courses)
+    # Dashboard returns capitalized role labels (currently "Student" and
+    # "Instructor"). Keep the labels in responses, but compare case-insensitively.
+    is_instructor = any(c.user_role.casefold() != "student" for c in courses)
+    is_student = any(c.user_role.casefold() == "student" for c in courses)
     
     return UserStatsResponse(
         username=username,

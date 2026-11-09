@@ -154,9 +154,11 @@
     html += `<p><strong>${sortedCourses.length}</strong> active course(s) with <strong>${staffData.all_staff.length}</strong> staff member(s).</p>`;
     
     // Actions
+    // Use double quotes for the attribute and escape any double quotes in the JSON string
+    const allStaffJson = JSON.stringify(staffData.all_staff).replace(/"/g, '&quot;');
     html += `
       <p class="mw-outreach-actions">
-        <button class="mw-outreach-copy-btn" data-all-staff='${JSON.stringify(staffData.all_staff)}'>Copy ping template</button>
+        <button class="mw-outreach-copy-btn" data-all-staff="${allStaffJson}">Copy ping template</button>
         <a href="${OUTREACH_BASE}/users/${encodeURIComponent(staffData.username)}" target="_blank" rel="noopener">View on Outreach Dashboard</a>
       </p>
     `;
@@ -284,23 +286,23 @@
       
       /* Tab indicator */
       .mw-outreach-indicator {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        margin-left: 6px;
-        vertical-align: middle;
+        display: inline-block !important;
+        width: 8px !important;
+        height: 8px !important;
+        border-radius: 50% !important;
+        margin-left: 6px !important;
+        vertical-align: middle !important;
       }
       .mw-outreach-indicator-active {
-        background: #14866d;
-        box-shadow: 0 0 4px rgba(20, 134, 109, 0.5);
+        background: #14866d !important;
+        box-shadow: 0 0 4px rgba(20, 134, 109, 0.5) !important;
       }
       .mw-outreach-indicator-tracking {
-        background: #fc3;
-        box-shadow: 0 0 4px rgba(255, 204, 51, 0.5);
+        background: #fc3 !important;
+        box-shadow: 0 0 4px rgba(255, 204, 51, 0.5) !important;
       }
       .mw-outreach-indicator-inactive {
-        background: #72777d;
+        background: #72777d !important;
       }
       
       /* Content styles */
@@ -515,7 +517,18 @@
         const copyBtn = body.querySelector('.mw-outreach-copy-btn');
         if (copyBtn) {
           copyBtn.addEventListener('click', function() {
-            const allStaff = JSON.parse(this.getAttribute('data-all-staff'));
+            let allStaff;
+            try {
+              allStaff = JSON.parse(this.getAttribute('data-all-staff'));
+            } catch (err) {
+              console.error('Invalid staff JSON:', err, this.getAttribute('data-all-staff'));
+              alert('Could not copy: staff data is corrupted.');
+              return;
+            }
+            if (!Array.isArray(allStaff)) {
+              alert('Could not copy: staff data is not a list.');
+              return;
+            }
             const chunks = [];
             for (let i = 0; i < allStaff.length; i += 6) {
               const chunk = allStaff.slice(i, i + 6);

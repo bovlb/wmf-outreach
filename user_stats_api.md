@@ -1,14 +1,22 @@
-## `GET /user_stats.json`
+## `GET /users/{username}/stats.json`
 
 ### Request
 
 ```http
-GET https://outreachdashboard.wmflabs.org/user_stats.json?username=<username>
+GET https://outreachdashboard.wmflabs.org/users/<username>/stats.json
 ```
 
-**Query parameters**
+**Path parameters**
 
-- `username` (string, required): Dashboard username to summarize (URL-encoded; spaces allowed).
+- `username` (string, required): Dashboard username to summarize, URL-encoded as a single path segment.
+
+Verified against the live Dashboard on 2026-11-09. The old
+`/user_stats.json?username=...` URL returns HTML rather than stats JSON.
+The replacement retains the `courses_details` and `max_project` fields,
+so this service's public `/api` endpoints and cached payload format are unchanged.
+Upstream routes and response template:
+[routes.rb](https://github.com/WikiEducationFoundation/WikiEduDashboard/blob/master/config/routes.rb),
+[stats.json.jbuilder](https://github.com/WikiEducationFoundation/WikiEduDashboard/blob/master/app/views/user_profiles/stats.json.jbuilder).
 
 ---
 
@@ -99,3 +107,5 @@ Aggregate stats for courses where user is a student:
 
 - Numeric values are inconsistently typed (numbers vs strings with K/M).
 - Some fields may be `null`.
+- Role labels are capitalized (`Student`, `Instructor`). Role checks in this
+  service accept either case and preserve the original label in responses.
